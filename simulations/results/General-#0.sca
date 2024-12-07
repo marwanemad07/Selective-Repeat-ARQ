@@ -1,0 +1,37 @@
+version 3
+run General-0-20241208-01:38:21-18240
+attr configname General
+attr datetime 20241208-01:38:21
+attr datetimef 20241208-013821
+attr experiment General
+attr inifile omnetpp.ini
+attr iterationvars ""
+attr iterationvarsd ""
+attr iterationvarsf ""
+attr measurement ""
+attr network project.Network
+attr processid 18240
+attr repetition 0
+attr replication #0
+attr resultdir results
+attr runnumber 0
+attr seedset 0
+config network project.Network
+config network.WS 4
+config network.PT 0.5
+config network.SN 7
+config network.TO 10
+config network.TD 1.0
+config network.ED 4.0
+config network.DD 0.1
+config network.LP 0
+
+par Network.Node0.out.channel typename "\"ned.IdealChannel\""
+par Network.Node1.out.channel typename "\"ned.IdealChannel\""
+par Network.coordinator.out[1].channel typename "\"ned.IdealChannel\""
+par Network.coordinator.out[0].channel typename "\"ned.IdealChannel\""
+par Network.coordinator typename "\"project.Coordinator\""
+par Network.Node0 typename "\"project.Node\""
+par Network.Node1 typename "\"project.Node\""
+par Network typename "\"project.Network\""
+
