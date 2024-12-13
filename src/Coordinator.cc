@@ -34,7 +34,7 @@ void Coordinator::initialize()
    iss >> nodeId >> startingTime;
 
 
-   Message_Base *msg = new Message_Base("Coordinator");
+   Message_Base *msg = new Message_Base("coord");
    msg->setName("Coordinator");
    sendDelayed(msg, startingTime, "out", nodeId);
 }

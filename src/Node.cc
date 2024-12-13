@@ -32,20 +32,27 @@ void Node::initialize()
     }
 
     // input lines text, to use it later for each node
-    setMessageLines(Utils::readLines(filePath));
+
 }
 
 void Node::handleMessage(cMessage *msg)
 {
+    if(msg->getName() == "coord") {
+        isSeneder = true;
+    }
+
+    int windowSize =par("WS").intValue();
     Message_Base* curMsg = Utils::castMessage(msg);
-
     if(curMsg->isSelfMessage()){
+        if(isSender){
 
-    }else {
-        std::pair<std::string, std::string> messageLine = getNextMessage();
-        Message_Base* newMsg = getNewMessage(messageLine.second);
-        EV <<  newMsg->getPaylaod() << ' '<<newMsg->getTrailer();
-        send(newMsg, "out");
+        } else{
+
+        }
+    } else if(isSender) {
+        Sender(curMsg);
+    } else {
+
     }
 }
 
@@ -77,4 +84,55 @@ Message_Base* Node::getNewMessage(std::string message) {
     newMsg->setTrailer(Utils::bitsToChar(crc));
 
     return newMsg;
+}
+
+void Node::Sender(Message_Base* msg) {
+    if(msg->getName() == "coordinator") {
+        std::string filePath = "../input/input0.txt";
+        setMessageLines(Utils::readLines(filePath));
+    }
+
+    Message_Base* newMsg = getNewMessage(messageText);
+
+    if(msg->getName() != "coordinator") {
+        int frameType = msg->getFrameType();
+        int number = msg->getAckNackNumber();
+        if(frameType == 0) {
+            // resend this frame (assume now this not happening)
+        } else {
+            // get next message of this index
+            if()
+            std::pair<std::string, std::string> messageLine = messageLines[curWindowIndex];
+            std::string errorCode = messageLine.first;
+            std::string messageText = messageLine.second;
+
+            msg->setHeader(curWindowIndex);
+            msg->setFrameType(2);
+            send(newMsg, "out", 0);
+        }
+    } else {
+
+    }
+    EV <<  newMsg->getPaylaod() << ' '<<newMsg->getTrailer();
+    send(newMsg, "out");
+}
+void Node::Reciver(Message_Base* msg);
+
+void Node::moveWindow(int ackNumber) {
+    int windowSize = par("WS");
+    int maxSeqNumber =(2 * windowSize) - 1;
+    startWindowIndex = ackNumber;
+    endWindowIndex = (startWindowIndex + par("WS").intValue()) % (maxSeqNumber + 1);
+}
+
+void Node::increaseCurIndex() {
+    // need to be revise
+    int windowSize = par("WS"); // TODO: save these pars to not repeat code
+    int maxSeqNumber =(2 * windowSize) - 1;
+    if((startWindowIndex <= curWindowIndex and  curWindowIndex < endWindowIndex)
+       or (startWindowIndex >= endWindowIndex and
+          (curWindowIndex >= startWindowIndex or curWindowIndex < endWindowIndex))
+       ) {
+        curWindowIndex = (curWindowIndex + 1) % (maxSeqNumber + 1);
+    }
 }

@@ -30,10 +30,17 @@ class Node : public cSimpleModule
   private:
     // a vector of pair for {error code, message to send}
     std::vector<std::pair<std::string, std::string>> messageLines;
-    int lastMessageIndex = 0;
+    int startWindowIndex = 0;
+    int curWindowIndex = 0;
+    int endWindowIndex = 0;
     const std::string generator = "101";
+    bool isSender = false;
 
     Message_Base* getNewMessage(std::string message);
+    void Sender(Message_Base* msg);
+    void Reciver(Message_Base* msg);
+    void moveWindow(int ackNumber);
+    void increaseCurIndex();
   protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;
