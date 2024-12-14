@@ -75,9 +75,40 @@ std::string Utils::createFrame(std::string payload) {
     return framedMessage;
 }
 
+std::string Utils::deframe(std::string frame) {
+    const char FLAG = '$';
+    const char ESCAPE = '/';
+
+    std::string payload = "";
+    bool escapeNext = false;
+    std::cout << "frame: " << frame;
+    if (frame.size() < 2 || frame.front() != FLAG || frame.back() != FLAG) {
+        throw std::invalid_argument("Invalid frame: Missing start or end FLAG.");
+    }
+
+    for (int i = 1; i < frame.size() - 1; ++i) {
+        char c = frame[i];
+
+        if (escapeNext) {
+            payload += c;
+            escapeNext = false;
+        } else if (c == ESCAPE) {
+            escapeNext = true;
+        } else {
+            payload += c;
+        }
+    }
+
+    if (escapeNext) {
+        throw std::invalid_argument("Invalid frame: Ends with incomplete escape sequence.");
+    }
+
+    return payload;
+}
+
 std::string Utils::createCRC(const std::string& data, const std::string& generator) {
     std::string augmentedData = data + std::string(generator.size() - 1, '0');
-
+    EV << "augmented data: " << augmentedData << endl;
     std::string remainder = augmentedData;
 
     // Perform binary division
@@ -97,7 +128,7 @@ std::string Utils::createCRC(const std::string& data, const std::string& generat
 
 bool Utils::validateCRC(const std::string& dataWithCRC, const std::string& generator) {
     std::string remainder = dataWithCRC;
-
+    EV << "Data with crc: " <<dataWithCRC << endl;
     // Perform binary division
     for (size_t i = 0; i <= remainder.size() - generator.size(); ++i) {
         if (remainder[i] == '1') {
@@ -123,6 +154,15 @@ std::string Utils::convertToBitStream(const std::string &s){
 
     return bitStream;
 }
+
+std::string Utils::charToBits(char character) {
+    std::string bits = std::bitset<8>(static_cast<unsigned char>(character)).to_string();
+    std::string result = "";
+    result += bits[6];
+    result += bits[7];
+    return result;
+}
+
 
 char Utils::bitsToChar(const std::string& bits){
     std::string paddedBits = bits;

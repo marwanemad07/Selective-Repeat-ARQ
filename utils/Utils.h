@@ -29,9 +29,11 @@ public:
     static std::vector<std::pair<std::string, std::string>> readLines(std::string path);
     static Message_Base* castMessage(cMessage *msg);
     static std::string createFrame(std:: string payload);
+    static std::string deframe(std::string frame);
     static std::string createCRC(const std::string& data, const std::string& generator);
     static bool validateCRC(const std::string& dataWithCRC, const std::string& generator);
     static std::string convertToBitStream(const std::string &s);
+    static std::string charToBits(char character);
     static char bitsToChar(const std::string& bits);
     virtual ~Utils();
 };

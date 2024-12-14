@@ -20,6 +20,15 @@ package project;
 //
 simple Node
 {
+    parameters:
+        int WS = default(4);
+        double PT = default(0.5);
+        int SN = default(7);
+        double TO = default(10);
+        double TD = default(1.0);
+        double ED = default(4.0);
+        double DD = default(0.1);
+        int LP = default(0);
     gates:
         input in[2];
         output out;

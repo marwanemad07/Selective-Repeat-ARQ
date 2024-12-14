@@ -22,6 +22,15 @@ Define_Module(Node);
 void Node::initialize()
 {
     // TODO - Generated method body
+    windowSize = par("WS").intValue();
+    PT = par("PT").doubleValue();
+    SN = par("SN").intValue();
+    TO = par("TO").doubleValue();
+    TD = par("TD").doubleValue();
+    ED = par("ED").doubleValue();
+    DD = par("DD").doubleValue();
+    LP = par("LP").intValue();
+
     const char* moduleName = getName();
     std::string filePath;
 
@@ -31,17 +40,19 @@ void Node::initialize()
         filePath = "../input/input1.txt";
     }
 
+    maxSeqNumber = (2 * windowSize) -  1;
+    arrived.resize(windowSize);
+
     // input lines text, to use it later for each node
 
 }
 
 void Node::handleMessage(cMessage *msg)
 {
-    if(msg->getName() == "coord") {
-        isSeneder = true;
+    if(!strcmp(msg->getName(), "coordinator")) {
+        isSender = true;
     }
 
-    int windowSize =par("WS").intValue();
     Message_Base* curMsg = Utils::castMessage(msg);
     if(curMsg->isSelfMessage()){
         if(isSender){
@@ -50,9 +61,9 @@ void Node::handleMessage(cMessage *msg)
 
         }
     } else if(isSender) {
-        Sender(curMsg);
+        sender(curMsg);
     } else {
-
+        reciever(curMsg);
     }
 }
 
@@ -62,16 +73,16 @@ void Node::setMessageLines(std::vector<std::pair<std::string, std::string>> line
 
 
 std::pair<std::string, std::string> Node::getNextMessage() {
-    if (lastMessageIndex < 0 || lastMessageIndex >= (int)(messageLines.size())) {
+    if (messageIndex < 0 || messageIndex >= (int)(messageLines.size())) {
         throw std::out_of_range("Index out of range");
     }
-    std::pair<std::string, std::string> message = messageLines[lastMessageIndex];
+    std::pair<std::string, std::string> message = messageLines[messageIndex];
     incrementMessageIndex();
     return message;
 }
 
 void Node::incrementMessageIndex(){
-    this->lastMessageIndex++;
+    this->messageIndex++;
 }
 
 Message_Base* Node::getNewMessage(std::string message) {
@@ -79,50 +90,75 @@ Message_Base* Node::getNewMessage(std::string message) {
     std::string frame = Utils::createFrame(message);
     newMsg->setPaylaod(frame.c_str());
 
-    std::string bitStream = Utils::convertToBitStream(frame);
+    std::string bitStream = Utils::convertToBitStream(message);
     std::string crc = Utils::createCRC(bitStream, this->generator);
+    EV << "trailer before converting to char: " << crc << "\n";
     newMsg->setTrailer(Utils::bitsToChar(crc));
 
     return newMsg;
 }
 
-void Node::Sender(Message_Base* msg) {
-    if(msg->getName() == "coordinator") {
+void Node::sender(Message_Base* msg) {
+    EV << "Inside sender\n";
+    if(!strcmp(msg->getName(), "coordinator") ) {
+        EV << "Before read file\n";
         std::string filePath = "../input/input0.txt";
         setMessageLines(Utils::readLines(filePath));
+        EV << "After read file\n";
     }
-
-    Message_Base* newMsg = getNewMessage(messageText);
-
-    if(msg->getName() != "coordinator") {
-        int frameType = msg->getFrameType();
-        int number = msg->getAckNackNumber();
-        if(frameType == 0) {
-            // resend this frame (assume now this not happening)
-        } else {
-            // get next message of this index
-            if()
-            std::pair<std::string, std::string> messageLine = messageLines[curWindowIndex];
-            std::string errorCode = messageLine.first;
-            std::string messageText = messageLine.second;
-
-            msg->setHeader(curWindowIndex);
-            msg->setFrameType(2);
-            send(newMsg, "out", 0);
-        }
+    EV << "Before get pars\n";
+    int frameType = msg->getFrameType();
+    int number = msg->getAckNackNumber();
+    if(frameType == 0) {
+        // resend this frame (assume now this not happening)
+        EV << "Nack Frame\n";
     } else {
+        // get next message of this index
+        std::pair<std::string, std::string> messageLine = getNextMessage();
+        std::string errorCode = messageLine.first;
+        std::string messageText = messageLine.second;
+        EV << "message text: " <<messageText;
+        Message_Base* newMsg = getNewMessage(messageText);
 
+        msg->setHeader(curWindowIndex);
+        msg->setFrameType(2);
+        EV << newMsg->getTrailer();
+        send(newMsg, "out");
     }
-    EV <<  newMsg->getPaylaod() << ' '<<newMsg->getTrailer();
-    send(newMsg, "out");
-}
-void Node::Reciver(Message_Base* msg);
 
-void Node::moveWindow(int ackNumber) {
-    int windowSize = par("WS");
-    int maxSeqNumber =(2 * windowSize) - 1;
+}
+void Node::reciever(Message_Base* msg) {
+    std::string payload = Utils::deframe(msg->getPaylaod());
+    EV << "Revieved payload: " << payload << endl;
+    std::string trailerBits = Utils::charToBits(msg->getTrailer());
+    std::string payloadBits = Utils::convertToBitStream(payload);
+
+    EV << "Trailer Bits: " <<trailerBits << endl;
+
+    bool validCrc = Utils::validateCRC(payloadBits + trailerBits, this->generator);
+
+    EV << validCrc;
+    if(!validCrc)
+        return; //
+
+    int seqNumber = msg->getHeader();
+    //cancelAndDelete(msg);
+    moveReciverWindow(seqNumber);
+    sendAck(seqNumber);
+}
+
+void Node::moveSenderWindow(int ackNumber) {
     startWindowIndex = ackNumber;
     endWindowIndex = (startWindowIndex + par("WS").intValue()) % (maxSeqNumber + 1);
+}
+
+void Node::moveReciverWindow(int seqNumber) {
+    arrived[seqNumber] = true;
+    while(arrived[startWindowIndex]){
+        arrived[seqNumber] = false;
+        startWindowIndex = (startWindowIndex + 1) %(maxSeqNumber + 1);
+    }
+    endWindowIndex = (endWindowIndex + 1) %(maxSeqNumber + 1);
 }
 
 void Node::increaseCurIndex() {
@@ -130,9 +166,18 @@ void Node::increaseCurIndex() {
     int windowSize = par("WS"); // TODO: save these pars to not repeat code
     int maxSeqNumber =(2 * windowSize) - 1;
     if((startWindowIndex <= curWindowIndex and  curWindowIndex < endWindowIndex)
-       or (startWindowIndex >= endWindowIndex and
-          (curWindowIndex >= startWindowIndex or curWindowIndex < endWindowIndex))
+       or (startWindowIndex > endWindowIndex and curWindowIndex >= startWindowIndex)
+       or (startWindowIndex > endWindowIndex and curWindowIndex < endWindowIndex)
        ) {
         curWindowIndex = (curWindowIndex + 1) % (maxSeqNumber + 1);
     }
+}
+
+void Node::sendAck(int seqNumber) {
+    Message_Base* msg = new Message_Base();
+    msg->setFrameType(1);
+    msg->setAckNackNumber((seqNumber + 1) % (this->maxSeqNumber + 1));
+    msg->setHeader(seqNumber); // ask a
+
+    send(msg, "out");
 }
