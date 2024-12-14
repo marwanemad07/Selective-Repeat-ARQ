@@ -21,7 +21,7 @@
 #include "Message_m.h"
 
 using namespace omnetpp;
-
+using namespace std;
 /**
  * TODO - Generated class
  */
@@ -31,6 +31,7 @@ class Node : public cSimpleModule
     // a vector of pair for {error code, message to send}
     std::vector<std::pair<std::string, std::string>> messageLines;
     std::vector<bool> arrived;
+    std::vector<std::string> bufferLines;
     int startWindowIndex = 0;
     int curWindowIndex = 0;
     int endWindowIndex = 0;
@@ -56,7 +57,7 @@ class Node : public cSimpleModule
     void moveSenderWindow(int ackNumber);
     void moveReciverWindow(int seqNumber);
     void increaseCurIndex();
-    void sendAck(int seqNumber);
+    void sendAckNack(int seqNumber,int type);
   protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;

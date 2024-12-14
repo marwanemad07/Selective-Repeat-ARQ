@@ -16,6 +16,16 @@
 #include "Node.h"
 #include "../utils/Utils.cc"
 
+void printVector(const std::vector<string>& vec) {
+    std::cout << "[";
+    for (size_t i = 0; i < vec.size(); ++i) {
+        std::cout << vec[i];
+        if (i < vec.size() - 1) {
+            std::cout << ", ";
+        }
+    }
+    std::cout << "]" << std::endl;
+}
 
 Define_Module(Node);
 
@@ -41,8 +51,8 @@ void Node::initialize()
     }
 
     maxSeqNumber = (2 * windowSize) -  1;
-    arrived.resize(windowSize);
-
+    arrived.resize(maxSeqNumber+1);
+    bufferLines.resize(maxSeqNumber+1);
     // input lines text, to use it later for each node
 
 }
@@ -106,34 +116,57 @@ void Node::sender(Message_Base* msg) {
         setMessageLines(Utils::readLines(filePath));
         EV << "After read file\n";
     }
-    EV << "Before get pars\n";
     int frameType = msg->getFrameType();
-    int number = msg->getAckNackNumber();
+    int ackNackNum = msg->getAckNackNumber();
+
+
     if(frameType == 0) {
-        // resend this frame (assume now this not happening)
-        EV << "Nack Frame\n";
+        EV<<"Nack ";
+        string messageText = bufferLines[ackNackNum];
+        EV << "message text: " <<ackNackNum <<" "<<messageText;
+
+        Message_Base* newMsg = getNewMessage(messageText);
+
+        newMsg->setHeader(ackNackNum);
+        newMsg->setFrameType(2);
+
+        EV << newMsg->getTrailer();
+        send(newMsg, "out");
     } else {
+        EV<<"ACK ";
         // get next message of this index
+        moveSenderWindow(ackNackNum);
         std::pair<std::string, std::string> messageLine = getNextMessage();
         std::string errorCode = messageLine.first;
         std::string messageText = messageLine.second;
+
         EV << "message text: " <<messageText;
         Message_Base* newMsg = getNewMessage(messageText);
 
-        msg->setHeader(curWindowIndex);
-        msg->setFrameType(2);
+        bufferLines[curWindowIndex] = messageText;
+        printVector(bufferLines);
+
+
+
+        newMsg->setHeader(curWindowIndex);
+        newMsg->setFrameType(2);
+
         EV << newMsg->getTrailer();
+
         send(newMsg, "out");
+        increaseCurIndex();
+
     }
+    cancelAndDelete(msg);
 
 }
 void Node::reciever(Message_Base* msg) {
     std::string payload = Utils::deframe(msg->getPaylaod());
-    EV << "Revieved payload: " << payload << endl;
+    EV << "Revieved payload: " << msg->getPaylaod() << endl;
+    printVector(bufferLines);
     std::string trailerBits = Utils::charToBits(msg->getTrailer());
     std::string payloadBits = Utils::convertToBitStream(payload);
 
-    EV << "Trailer Bits: " <<trailerBits << endl;
 
     bool validCrc = Utils::validateCRC(payloadBits + trailerBits, this->generator);
 
@@ -142,20 +175,28 @@ void Node::reciever(Message_Base* msg) {
         return; //
 
     int seqNumber = msg->getHeader();
-    //cancelAndDelete(msg);
-    moveReciverWindow(seqNumber);
-    sendAck(seqNumber);
+    EV << "seqNumber: " <<seqNumber<<" startWindowIndex "<<startWindowIndex<< endl;
+    if(seqNumber != startWindowIndex)
+        sendAckNack(startWindowIndex,0); //nack
+    else{
+        moveReciverWindow(seqNumber);
+        sendAckNack(seqNumber+1,1);//send next
+    }
+        cancelAndDelete(msg);
 }
 
 void Node::moveSenderWindow(int ackNumber) {
     startWindowIndex = ackNumber;
+
     endWindowIndex = (startWindowIndex + par("WS").intValue()) % (maxSeqNumber + 1);
 }
 
 void Node::moveReciverWindow(int seqNumber) {
+//    if( seqNumber > ( startWindowIndex + windowSize ) )
+//        return;
     arrived[seqNumber] = true;
     while(arrived[startWindowIndex]){
-        arrived[seqNumber] = false;
+        arrived[startWindowIndex] = false;
         startWindowIndex = (startWindowIndex + 1) %(maxSeqNumber + 1);
     }
     endWindowIndex = (endWindowIndex + 1) %(maxSeqNumber + 1);
@@ -173,11 +214,13 @@ void Node::increaseCurIndex() {
     }
 }
 
-void Node::sendAck(int seqNumber) {
+void Node::sendAckNack(int seqNumber,int type) {
     Message_Base* msg = new Message_Base();
-    msg->setFrameType(1);
-    msg->setAckNackNumber((seqNumber + 1) % (this->maxSeqNumber + 1));
-    msg->setHeader(seqNumber); // ask a
+    msg->setFrameType(type);
+    msg->setAckNackNumber((seqNumber) % (this->maxSeqNumber + 1));
+    msg->setHeader(seqNumber); //TODO: ask IF WE SHOULD ADD IT
 
     send(msg, "out");
 }
+
+
