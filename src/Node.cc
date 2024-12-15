@@ -46,12 +46,16 @@ void Node::initialize()
 
     if (std::string(moduleName) == "Node0") {
         filePath = "../input/input0.txt";
+        nodeId = 0;
     } else if (std::string(moduleName) == "Node1") {
         filePath = "../input/input1.txt";
+        nodeId = 1;
     }
 
+    endWindowIndex = windowSize - 1;
     maxSeqNumber = (2 * windowSize) -  1;
     arrived.resize(maxSeqNumber+1);
+    isSended.resize(maxSeqNumber+1);
     bufferLines.resize(maxSeqNumber+1);
     // input lines text, to use it later for each node
 
@@ -64,16 +68,17 @@ void Node::handleMessage(cMessage *msg)
     }
 
     Message_Base* curMsg = Utils::castMessage(msg);
-    if(curMsg->isSelfMessage()){
-        if(isSender){
-
-        } else{
-
-        }
-    } else if(isSender) {
-        sender(curMsg);
-    } else {
-        reciever(curMsg);
+    if(isSender) {
+        if(curMsg->isSelfMessage())
+            this->senderSelfMessage(curMsg);
+        else
+            this->sender(curMsg);
+    }
+    else {
+        if(curMsg->isSelfMessage())
+            this->recieverSelfMessage(curMsg);
+        else
+            this->reciever(curMsg);
     }
 }
 
@@ -102,92 +107,129 @@ Message_Base* Node::getNewMessage(std::string message) {
 
     std::string bitStream = Utils::convertToBitStream(message);
     std::string crc = Utils::createCRC(bitStream, this->generator);
-    EV << "trailer before converting to char: " << crc << "\n";
     newMsg->setTrailer(Utils::bitsToChar(crc));
 
     return newMsg;
 }
 
 void Node::sender(Message_Base* msg) {
-    EV << "Inside sender\n";
-    if(!strcmp(msg->getName(), "coordinator") ) {
-        EV << "Before read file\n";
+    bool isCoordinator = !strcmp(msg->getName(), "coordinator");
+    if(isCoordinator) {
         std::string filePath = "../input/input0.txt";
         setMessageLines(Utils::readLines(filePath));
-        EV << "After read file\n";
     }
+
     int frameType = msg->getFrameType();
     int ackNackNum = msg->getAckNackNumber();
 
-
     if(frameType == 0) {
-        EV<<"Nack ";
         string messageText = bufferLines[ackNackNum];
-        EV << "message text: " <<ackNackNum <<" "<<messageText;
 
         Message_Base* newMsg = getNewMessage(messageText);
 
         newMsg->setHeader(ackNackNum);
         newMsg->setFrameType(2);
 
-        EV << newMsg->getTrailer();
         send(newMsg, "out");
     } else {
-        EV<<"ACK ";
         // get next message of this index
-        moveSenderWindow(ackNackNum);
+        if(!isCoordinator)
+            moveSenderWindow(ackNackNum);
+
         std::pair<std::string, std::string> messageLine = getNextMessage();
         std::string errorCode = messageLine.first;
         std::string messageText = messageLine.second;
 
-        EV << "message text: " <<messageText;
         Message_Base* newMsg = getNewMessage(messageText);
 
         bufferLines[curWindowIndex] = messageText;
-        printVector(bufferLines);
-
-
 
         newMsg->setHeader(curWindowIndex);
         newMsg->setFrameType(2);
 
-        EV << newMsg->getTrailer();
-
-        send(newMsg, "out");
-        increaseCurIndex();
-
+        Utils::logChannelError(simTime(), nodeId, errorCode);
+        newMsg->setKind(0);
+        newMsg->setName(errorCode.c_str());
+        scheduleAt(simTime() + PT, newMsg);
     }
     cancelAndDelete(msg);
-
 }
+
+
+void Node::senderSelfMessage(Message_Base* msg) {
+    int seqNumber = msg->getHeader();
+    int kind = msg->getKind();
+    if(kind == 0) {
+        Utils::logFrameTransmission(simTime(), nodeId, seqNumber, msg->getPaylaod(),
+                msg->getTrailer(), 0, 0, 0, 0);
+
+        sendDelayed(msg, TD, "out");
+        increaseCurIndex();
+
+        // this is for handling timeout
+        Message_Base* dupMsg = msg->dup();
+        dupMsg->setKind(1);
+        scheduleAt(simTime() + TD + TO, dupMsg);
+        return;
+    }
+
+    if(not isSended[seqNumber]) {
+        // there will be no error again as said
+        double delay = PT + TD;
+        Utils::logTimeoutEvent(simTime(), nodeId, seqNumber);
+        sendDelayed(msg, delay,"out");
+    }
+}
+
 void Node::reciever(Message_Base* msg) {
+    int seqNumber = msg->getHeader();
+    // need to know if this frame not repeated
+    if(!isBetween(startWindowIndex, seqNumber, endWindowIndex)) {
+        double delay = PT + TD;
+        Utils::logControlFrame(simTime(), nodeId, 1, seqNumber + 1, 0);
+        return;
+    }
+
     std::string payload = Utils::deframe(msg->getPaylaod());
-    EV << "Revieved payload: " << msg->getPaylaod() << endl;
-    printVector(bufferLines);
     std::string trailerBits = Utils::charToBits(msg->getTrailer());
     std::string payloadBits = Utils::convertToBitStream(payload);
 
-
     bool validCrc = Utils::validateCRC(payloadBits + trailerBits, this->generator);
 
-    EV << validCrc;
     if(!validCrc)
         return; //
 
-    int seqNumber = msg->getHeader();
-    EV << "seqNumber: " <<seqNumber<<" startWindowIndex "<<startWindowIndex<< endl;
-    if(seqNumber != startWindowIndex)
-        sendAckNack(startWindowIndex,0); //nack
+    Utils::logPayloadUpload(payload, seqNumber);
+
+    if(seqNumber != startWindowIndex) {
+        sendAckNack(startWindowIndex, 0); //nack
+    }
     else{
         moveReciverWindow(seqNumber);
-        sendAckNack(seqNumber+1,1);//send next
+        sendAckNack(seqNumber+1, 1);//send next
     }
-        cancelAndDelete(msg);
+    cancelAndDelete(msg);
+}
+
+void Node::recieverSelfMessage(Message_Base* msg) {
+    int ackNackNumber = msg->getAckNackNumber();
+    int lossProb = PT / 100.0;
+    if(lossProb <= 0.5) {
+        Utils::logControlFrame(simTime(), nodeId, 1, ackNackNumber, 0);
+        sendDelayed(msg, TD, "out");
+    }
+    else {
+        // Don't do anything, we have to check in receiving, should i discard the coming message or not
+        // i think we should only discard the frames out of the window and ...
+        Utils::logControlFrame(simTime(), nodeId, 1, ackNackNumber, 1);
+    }
 }
 
 void Node::moveSenderWindow(int ackNumber) {
-    startWindowIndex = ackNumber;
-
+    while(startWindowIndex != ackNumber){
+        isSended[startWindowIndex] = true;
+        startWindowIndex = (startWindowIndex + 1) % (maxSeqNumber + 1);
+    }
     endWindowIndex = (startWindowIndex + par("WS").intValue()) % (maxSeqNumber + 1);
 }
 
@@ -199,17 +241,14 @@ void Node::moveReciverWindow(int seqNumber) {
         arrived[startWindowIndex] = false;
         startWindowIndex = (startWindowIndex + 1) %(maxSeqNumber + 1);
     }
-    endWindowIndex = (endWindowIndex + 1) %(maxSeqNumber + 1);
+    endWindowIndex = (startWindowIndex + windowSize) %(maxSeqNumber + 1);
 }
 
 void Node::increaseCurIndex() {
     // need to be revise
     int windowSize = par("WS"); // TODO: save these pars to not repeat code
     int maxSeqNumber =(2 * windowSize) - 1;
-    if((startWindowIndex <= curWindowIndex and  curWindowIndex < endWindowIndex)
-       or (startWindowIndex > endWindowIndex and curWindowIndex >= startWindowIndex)
-       or (startWindowIndex > endWindowIndex and curWindowIndex < endWindowIndex)
-       ) {
+    if(isBetween(startWindowIndex, curWindowIndex, endWindowIndex)) {
         curWindowIndex = (curWindowIndex + 1) % (maxSeqNumber + 1);
     }
 }
@@ -220,7 +259,12 @@ void Node::sendAckNack(int seqNumber,int type) {
     msg->setAckNackNumber((seqNumber) % (this->maxSeqNumber + 1));
     msg->setHeader(seqNumber); //TODO: ask IF WE SHOULD ADD IT
 
-    send(msg, "out");
+    msg->setKind(0); // 0 means we're waiting for processing, may not be needed here
+    scheduleAt(simTime() + PT, msg);
 }
 
-
+bool Node::isBetween(int s, int m, int e) {
+    return (s <= m and  m < e)
+           or (s > e and m >= s)
+           or (s > e and m < e);
+}

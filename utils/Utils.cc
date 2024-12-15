@@ -81,7 +81,6 @@ std::string Utils::deframe(std::string frame) {
 
     std::string payload = "";
     bool escapeNext = false;
-    std::cout << "frame: " << frame;
     if (frame.size() < 2 || frame.front() != FLAG || frame.back() != FLAG) {
         throw std::invalid_argument("Invalid frame: Missing start or end FLAG.");
     }
@@ -108,7 +107,6 @@ std::string Utils::deframe(std::string frame) {
 
 std::string Utils::createCRC(const std::string& data, const std::string& generator) {
     std::string augmentedData = data + std::string(generator.size() - 1, '0');
-    EV << "augmented data: " << augmentedData << endl;
     std::string remainder = augmentedData;
 
     // Perform binary division
@@ -128,7 +126,6 @@ std::string Utils::createCRC(const std::string& data, const std::string& generat
 
 bool Utils::validateCRC(const std::string& dataWithCRC, const std::string& generator) {
     std::string remainder = dataWithCRC;
-    EV << "Data with crc: " <<dataWithCRC << endl;
     // Perform binary division
     for (size_t i = 0; i <= remainder.size() - generator.size(); ++i) {
         if (remainder[i] == '1') {
@@ -171,3 +168,37 @@ char Utils::bitsToChar(const std::string& bits){
     }
     return static_cast<char>(std::bitset<8>(paddedBits).to_ulong());
 }
+
+void Utils::logChannelError(omnetpp::simtime_t time, int nodeId, const std::string& errorCode) {
+    EV << "At time [" << time << "], Node[" << nodeId << "], Introducing channel error with code = ["
+       << errorCode << "]" << std::endl;
+}
+
+void Utils::logFrameTransmission(omnetpp::simtime_t time, int nodeId, int seqNum, const std::string& payload,
+                                 char trailer, int modifiedBit, int lostBit,
+                                 int duplicate, double delay) {
+    std::string trailerBits = charToBits(trailer);
+
+    EV << "At time [" << time << "], Node[" << nodeId << "] [sent] frame with seq_num=[" << seqNum
+       << "] and payload=[" << payload << "] and trailer=[" << trailerBits << "], Modified ["
+       << modifiedBit << "], Lost [" << (lostBit ? "Yes" : "No") << "], Duplicate [" << duplicate
+       << "], Delay [" << delay << "]" << std::endl;
+}
+
+void Utils::logTimeoutEvent(omnetpp::simtime_t time, int nodeId, int seqNum) {
+    EV << "Time out event at time [" << time << "], at Node[" << nodeId << "] for frame with seq_num=["
+       << seqNum << "]" << std::endl;
+}
+
+void Utils::logControlFrame(omnetpp::simtime_t time, int nodeId, int frameType, int number,
+                            int loss) {
+    EV << "At time [" << time << "], Node[" << nodeId << "] Sending [" << frameType
+       << "] with number [" << number << "], loss [" << (loss ? "Yes" : "No") << "]" << std::endl;
+}
+
+void Utils::logPayloadUpload(const std::string& payload, int seqNum) {
+    EV << "Uploading payload=[" << payload << "] and seq_num=[" << seqNum << "] to the network layer"
+       << std::endl;
+}
+
+

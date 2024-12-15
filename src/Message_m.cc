@@ -592,4 +592,3 @@ void MessageDescriptor::setFieldStructValuePointer(omnetpp::any_ptr object, int 
 namespace omnetpp {
 
 }  // namespace omnetpp
-

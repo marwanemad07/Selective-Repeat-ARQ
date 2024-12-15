@@ -35,6 +35,14 @@ public:
     static std::string convertToBitStream(const std::string &s);
     static std::string charToBits(char character);
     static char bitsToChar(const std::string& bits);
+    static void logChannelError(omnetpp::simtime_t time, int nodeId, const std::string& errorCode);
+    static void logFrameTransmission(omnetpp::simtime_t time, int nodeId, int seqNum, const std::string& payload,
+                                     char trailer, int modifiedBit, int lost,
+                                     int duplicate, double delay);
+    static void logTimeoutEvent(omnetpp::simtime_t time, int nodeId, int seqNum);
+    static void logControlFrame(omnetpp::simtime_t time, int nodeId, int frameType, int number,
+                                int loss);
+    static void logPayloadUpload(const std::string& payload, int seqNum);
     virtual ~Utils();
 };
 

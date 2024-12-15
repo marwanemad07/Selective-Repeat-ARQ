@@ -110,4 +110,3 @@ template<> inline Message_Base *fromAnyPtr(any_ptr ptr) { return check_and_cast<
 }  // namespace omnetpp
 
 #endif // ifndef __MESSAGE_M_H
-

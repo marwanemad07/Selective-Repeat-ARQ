@@ -32,6 +32,7 @@ class Node : public cSimpleModule
     std::vector<std::pair<std::string, std::string>> messageLines;
     std::vector<bool> arrived;
     std::vector<std::string> bufferLines;
+    std::vector<bool> isSended;
     int startWindowIndex = 0;
     int curWindowIndex = 0;
     int endWindowIndex = 0;
@@ -39,6 +40,7 @@ class Node : public cSimpleModule
     bool isSender = false;
     int messageIndex = 0 ;
 
+    int nodeId;
 
     // .ini parameters
     int windowSize;
@@ -53,11 +55,14 @@ class Node : public cSimpleModule
 
     Message_Base* getNewMessage(std::string message);
     void sender(Message_Base* msg);
+    void senderSelfMessage(Message_Base* msg);
     void reciever(Message_Base* msg);
+    void recieverSelfMessage(Message_Base* msg);
     void moveSenderWindow(int ackNumber);
     void moveReciverWindow(int seqNumber);
     void increaseCurIndex();
     void sendAckNack(int seqNumber,int type);
+    bool isBetween(int l, int m, int r);
   protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;
