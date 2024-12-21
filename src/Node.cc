@@ -16,6 +16,12 @@
 #include "Node.h"
 #include "../utils/Utils.cc"
 
+/*
+ * Kind bits => 0 -> to know processing or timeout
+ *              1 -> to know that a duplicate message is the first one or second
+ *
+ * */
+
 void printVector(const std::vector<string>& vec) {
     std::cout << "[";
     for (size_t i = 0; i < vec.size(); ++i) {
@@ -44,10 +50,10 @@ void Node::initialize()
     const char* moduleName = getName();
 
     if (std::string(moduleName) == "Node0") {
-        filePath = "../input/input0.txt";
+        filePath = "../input/input7.txt";
         nodeId = 0;
     } else if (std::string(moduleName) == "Node1") {
-        filePath = "../input/input1.txt";
+        filePath = "../input/input0.txt";
         nodeId = 1;
     }
 
@@ -57,7 +63,6 @@ void Node::initialize()
     isSended.resize(maxSeqNumber+1);
     bufferLines.resize(maxSeqNumber+1);
     // input lines text, to use it later for each node
-
 }
 
 void Node::handleMessage(cMessage *msg)
@@ -128,7 +133,7 @@ void Node::sender(Message_Base* msg) {
         newMsg->setHeader(ackNackNum);
         newMsg->setFrameType(2);
 
-        send(newMsg, "out");
+        send(newMsg, "out"); // i think we need to log for nack
     } else {
         // get next message of this index
         if(!isCoordinator)
@@ -148,35 +153,80 @@ void Node::sender(Message_Base* msg) {
 
         Utils::logChannelError(simTime(), nodeId, errorCode);
         // this should be after the end processing
-        if(errorCode[0] == '1')
-            modificationError(newMsg);
 
         newMsg->setKind(0);
         newMsg->setName(errorCode.c_str());
         scheduleAt(simTime() + PT, newMsg);
     }
-    cancelAndDelete(msg);
+    // cancelAndDelete(msg);
 }
 
 
 void Node::senderSelfMessage(Message_Base* msg) {
     int seqNumber = msg->getHeader();
     int kind = msg->getKind();
-    if(kind == 0) {
-        Utils::logFrameTransmission(simTime(), nodeId, seqNumber, msg->getPaylaod(),
-                msg->getTrailer(), 0, 0, 0, 0);
 
-        sendDelayed(msg, TD, "out");
-        increaseCurIndex();
+    bool discardErrors = ((kind >> 2) & 1);
+    std::string errorCode = msg->getName();
+    int modifiedBit = 0;
+
+    if((kind & 1) == 0) {
+        Message_Base* timOutMsg = msg->dup(); // a pure message without any errors
+
+        if(!discardErrors) {
+            if(errorCode[0] == '1')
+                modifiedBit = modificationError(msg);
+
+
+            if(errorCode[1] == '0'){
+                // if there's a delay, set the kind
+                int delayKind = msg->getKind();
+                msg->setKind(delayKind | (1 << 2)); // set the third bit with 1 to discard errors again
+
+                double errorDelay = 0.0;
+                if(errorCode[3] == '1') errorDelay = ED;
+
+                if(errorCode[2] == '1') {
+                    Message_Base* dupMsg = msg->dup();
+                    int dupKind = dupMsg->getKind();
+                    dupKind |= (1 << 1);
+                    dupMsg->setKind(dupKind);
+                    dupMsg->setName(errorCode.c_str());
+                    scheduleAt(simTime() + errorDelay + DD, dupMsg);
+                }
+
+                if(errorDelay != 0.0){
+                    msg->setName(errorCode.c_str());
+                    scheduleAt(simTime() + errorDelay, msg->dup());
+                }
+            }
+        }
+
+        int duplicateLog = 0;
+        if (errorCode[2] == '1'){
+            if( (( msg->getKind() >> 1 ) & 1) == 0) duplicateLog = 1;
+            else duplicateLog = 2;
+        }
+
+        double errorDelayInterval = 0.0;
+        if(errorCode[3] == '1' and !discardErrors) errorDelayInterval = ED;
+
+        Utils::logFrameTransmission(simTime(), nodeId, seqNumber, msg->getPaylaod(),
+                                msg->getTrailer(), modifiedBit, errorCode[1] == '1', duplicateLog, errorDelayInterval);
+
+        if(errorDelayInterval == 0.0 and !isSecondMessageVersion(kind)){
+            sendDelayed(msg, TD, "out");
+            increaseCurIndex();
+        }
 
         // this is for handling timeout
-        Message_Base* dupMsg = msg->dup();
-        dupMsg->setKind(1);
-        scheduleAt(simTime() + TD + TO, dupMsg);
+
+        timOutMsg->setKind(kind | 1);
+        scheduleAt(simTime() + TD + TO, timOutMsg);
         return;
     }
 
-    if(not isSended[seqNumber]) {
+    if(not isSended[seqNumber] and !isSecondMessageVersion(kind)) {
         // there will be no error again as said
         double delay = PT + TD;
         Utils::logTimeoutEvent(simTime(), nodeId, seqNumber);
@@ -187,9 +237,10 @@ void Node::senderSelfMessage(Message_Base* msg) {
 void Node::reciever(Message_Base* msg) {
     int seqNumber = msg->getHeader();
     // need to know if this frame not repeated
+
     if(!isBetween(startWindowIndex, seqNumber, endWindowIndex)) {
         double delay = PT + TD;
-        Utils::logControlFrame(simTime(), nodeId, 1, seqNumber + 1, 0);
+        Utils::logControlFrame(simTime(), nodeId, 1, seqNumber + 1, 0); // TODO: i think we shouldn't print this again
         return;
     }
 
@@ -200,10 +251,9 @@ void Node::reciever(Message_Base* msg) {
     bool validCrc = Utils::validateCRC(payloadBits + trailerBits, this->generator);
 
     if(!validCrc)
-        return; //
+        return;
 
     Utils::logPayloadUpload(payload, seqNumber);
-
     if(seqNumber != startWindowIndex) {
         sendAckNack(startWindowIndex, 0); //nack
     }
@@ -211,12 +261,12 @@ void Node::reciever(Message_Base* msg) {
         moveReciverWindow(seqNumber);
         sendAckNack(seqNumber+1, 1);//send next
     }
-    cancelAndDelete(msg);
+    // cancelAndDelete(msg);
 }
 
 void Node::recieverSelfMessage(Message_Base* msg) {
     int ackNackNumber = msg->getAckNackNumber();
-    int lossProb = PT / 100.0;
+    int lossProb = LP / 100.0;
     if(lossProb <= 0.5) {
         Utils::logControlFrame(simTime(), nodeId, 1, ackNackNumber, 0);
         sendDelayed(msg, TD, "out");
@@ -272,16 +322,19 @@ bool Node::isBetween(int s, int m, int e) {
            or (s > e and m < e);
 }
 
-void Node::modificationError(Message_Base* msg) {
+int Node::modificationError(Message_Base* msg) {
 
-    EV << "Payload size before modification: " << std::string(msg->getPaylaod()).size() << endl;
     std::string bitStream = Utils::convertToBitStream(msg->getPaylaod());
 
-    int errorBitIndex = intuniform(8, bitStream.size() - 8);
-    bitStream[errorBitIndex] = bitStream[errorBitIndex] == '0' ? '1' : '0';
+    int errorBit = intuniform(8, bitStream.size() - 8);
+    bitStream[errorBit] = bitStream[errorBit] == '0' ? '1' : '0';
 
     std::string payload = Utils::bitsToString(bitStream);
-    EV << "Payload size after modification: " << payload.size() << endl;
     msg->setPaylaod(payload.c_str());
-    // need to print which value is inverted
+    // TODO: need to print which value is inverted
+    return errorBit;
+}
+
+bool Node::isSecondMessageVersion(int kind) {
+    return (kind >> 1) & 1;
 }

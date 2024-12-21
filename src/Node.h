@@ -64,7 +64,8 @@ class Node : public cSimpleModule
     void increaseCurIndex();
     void sendAckNack(int seqNumber,int type);
     bool isBetween(int l, int m, int r);
-    void modificationError(Message_Base* msg);
+    int modificationError(Message_Base* msg);
+    bool isSecondMessageVersion(int kind);
   protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;

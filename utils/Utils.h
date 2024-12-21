@@ -38,7 +38,7 @@ public:
     static std::string bitsToString(const std:: string& bits);
     static void logChannelError(omnetpp::simtime_t time, int nodeId, const std::string& errorCode);
     static void logFrameTransmission(omnetpp::simtime_t time, int nodeId, int seqNum, const std::string& payload,
-                                     char trailer, int modifiedBit, int lost,
+                                     char trailer, int modifiedBit, bool loss,
                                      int duplicate, double delay);
     static void logTimeoutEvent(omnetpp::simtime_t time, int nodeId, int seqNum);
     static void logControlFrame(omnetpp::simtime_t time, int nodeId, int frameType, int number,

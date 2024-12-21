@@ -189,13 +189,13 @@ void Utils::logChannelError(omnetpp::simtime_t time, int nodeId, const std::stri
 }
 
 void Utils::logFrameTransmission(omnetpp::simtime_t time, int nodeId, int seqNum, const std::string& payload,
-                                 char trailer, int modifiedBit, int lostBit,
+                                 char trailer, int modifiedBit, bool loss,
                                  int duplicate, double delay) {
     std::string trailerBits = charToBits(trailer);
 
     EV << "At time [" << time << "], Node[" << nodeId << "] [sent] frame with seq_num=[" << seqNum
        << "] and payload=[" << payload << "] and trailer=[" << trailerBits << "], Modified ["
-       << modifiedBit << "], Lost [" << (lostBit ? "Yes" : "No") << "], Duplicate [" << duplicate
+       << modifiedBit << "], Lost [" << (loss ? "Yes" : "No") << "], Duplicate [" << duplicate
        << "], Delay [" << delay << "]" << std::endl;
 }
 
