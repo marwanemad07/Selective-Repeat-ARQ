@@ -41,6 +41,7 @@ class Node : public cSimpleModule
     int messageIndex = 0 ;
 
     int nodeId;
+    std::string filePath;
 
     // .ini parameters
     int windowSize;
@@ -63,6 +64,7 @@ class Node : public cSimpleModule
     void increaseCurIndex();
     void sendAckNack(int seqNumber,int type);
     bool isBetween(int l, int m, int r);
+    void modificationError(Message_Base* msg);
   protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;

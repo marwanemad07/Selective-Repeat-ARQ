@@ -42,7 +42,6 @@ void Node::initialize()
     LP = par("LP").intValue();
 
     const char* moduleName = getName();
-    std::string filePath;
 
     if (std::string(moduleName) == "Node0") {
         filePath = "../input/input0.txt";
@@ -115,7 +114,6 @@ Message_Base* Node::getNewMessage(std::string message) {
 void Node::sender(Message_Base* msg) {
     bool isCoordinator = !strcmp(msg->getName(), "coordinator");
     if(isCoordinator) {
-        std::string filePath = "../input/input0.txt";
         setMessageLines(Utils::readLines(filePath));
     }
 
@@ -147,7 +145,12 @@ void Node::sender(Message_Base* msg) {
         newMsg->setHeader(curWindowIndex);
         newMsg->setFrameType(2);
 
+
         Utils::logChannelError(simTime(), nodeId, errorCode);
+        // this should be after the end processing
+        if(errorCode[0] == '1')
+            modificationError(newMsg);
+
         newMsg->setKind(0);
         newMsg->setName(errorCode.c_str());
         scheduleAt(simTime() + PT, newMsg);
@@ -267,4 +270,18 @@ bool Node::isBetween(int s, int m, int e) {
     return (s <= m and  m < e)
            or (s > e and m >= s)
            or (s > e and m < e);
+}
+
+void Node::modificationError(Message_Base* msg) {
+
+    EV << "Payload size before modification: " << std::string(msg->getPaylaod()).size() << endl;
+    std::string bitStream = Utils::convertToBitStream(msg->getPaylaod());
+
+    int errorBitIndex = intuniform(8, bitStream.size() - 8);
+    bitStream[errorBitIndex] = bitStream[errorBitIndex] == '0' ? '1' : '0';
+
+    std::string payload = Utils::bitsToString(bitStream);
+    EV << "Payload size after modification: " << payload.size() << endl;
+    msg->setPaylaod(payload.c_str());
+    // need to print which value is inverted
 }

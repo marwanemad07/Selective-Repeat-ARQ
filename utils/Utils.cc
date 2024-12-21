@@ -141,8 +141,7 @@ bool Utils::validateCRC(const std::string& dataWithCRC, const std::string& gener
 }
 
 std::string Utils::convertToBitStream(const std::string &s){
-    int charCount = s.size();
-    std::string bitStream = std::bitset<8>(charCount).to_string();
+    std::string bitStream;
 
     for(auto c : s){
         std::bitset<8> bits(c);
@@ -167,6 +166,21 @@ char Utils::bitsToChar(const std::string& bits){
         paddedBits = "0" + paddedBits;
     }
     return static_cast<char>(std::bitset<8>(paddedBits).to_ulong());
+}
+
+std::string Utils::bitsToString(const std::string& bits) {
+    std::string result;
+
+    if (bits.size() % 8 != 0) {
+        throw std::invalid_argument("Input bit string length must be a multiple of 8");
+    }
+
+    for (size_t i = 0; i < bits.size(); i += 8) {
+        std::string byte = bits.substr(i, 8);
+        char character = Utils::bitsToChar(byte);
+        result += character;
+    }
+    return result;
 }
 
 void Utils::logChannelError(omnetpp::simtime_t time, int nodeId, const std::string& errorCode) {
@@ -200,5 +214,3 @@ void Utils::logPayloadUpload(const std::string& payload, int seqNum) {
     EV << "Uploading payload=[" << payload << "] and seq_num=[" << seqNum << "] to the network layer"
        << std::endl;
 }
-
-
